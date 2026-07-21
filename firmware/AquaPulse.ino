@@ -9,7 +9,7 @@ const char* password = "Sarvy2503@";
 
 // --- Backend API ---
 // Change this to your computer's local IP address where FastAPI is running
-const String serverName = "http://10.79.110.152/api/sensor-data";
+const String serverName = "https://aquapulse-ne52.onrender.com/api/sensor-data";
 
 // --- Pin Definitions (30-Pin ESP32) ---
 #define PH_PIN 34
