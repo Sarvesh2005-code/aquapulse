@@ -165,7 +165,7 @@ function App() {
             <div className="pt-4 border-t border-gray-100">
               <span className="text-sm text-gray-500 uppercase tracking-wider font-semibold">Suitable For</span>
               <div className="mt-2 flex flex-wrap gap-2">
-                {analysis.plant_suitability.length > 0 ? analysis.plant_suitability.map(plant => (
+                {analysis?.plant_suitability?.length > 0 ? analysis.plant_suitability.map(plant => (
                   <span key={plant} className="px-3 py-1 bg-green-50 text-green-700 rounded-full text-sm font-medium">
                     {plant}
                   </span>
@@ -176,7 +176,7 @@ function App() {
             <div className="pt-4 border-t border-gray-100">
               <span className="text-sm text-gray-500 uppercase tracking-wider font-semibold">Appliance Impact</span>
               <ul className="mt-2 space-y-1">
-                {analysis.appliance_impact.length > 0 ? analysis.appliance_impact.map(impact => (
+                {analysis?.appliance_impact?.length > 0 ? analysis.appliance_impact.map(impact => (
                   <li key={impact} className="text-sm text-gray-700 flex items-center before:content-['•'] before:mr-2 before:text-aqua-500">
                     {impact}
                   </li>
