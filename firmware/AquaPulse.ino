@@ -1,131 +1,182 @@
-#include <WiFi.h>
+﻿#include <WiFi.h>
 #include <HTTPClient.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
-// --- WiFi Credentials ---
 const char* ssid = "OPPO A77s";
 const char* password = "Sarvy2503@";
 
-// --- Backend API ---
-// Change this to your computer's local IP address where FastAPI is running
 const String serverName = "https://aquapulse-ne52.onrender.com/api/sensor-data";
 
-// --- Pin Definitions (30-Pin ESP32) ---
 #define PH_PIN 34
 #define TDS_PIN 35
 #define TURBIDITY_PIN 32
-#define ONE_WIRE_BUS 4 // DS18B20 Temp Sensor
+#define ONE_WIRE_BUS 4 
 
-// Setup a oneWire instance to communicate with any OneWire devices
 OneWire oneWire(ONE_WIRE_BUS);
-// Pass our oneWire reference to Dallas Temperature sensor 
 DallasTemperature sensors(&oneWire);
 
-// Timing variables
 unsigned long lastTime = 0;
-// Send data every 10 seconds for testing (change to 60000 for 1 min in production)
-unsigned long timerDelay = 10000;
+unsigned long timerDelay = 10000; 
+
+const int NUM_SAMPLES = 20;
+
+float getMedian(float samples[], int size) {
+  for (int i = 0; i < size - 1; i++) {
+    for (int j = i + 1; j < size; j++) {
+      if (samples[i] > samples[j]) {
+        float temp = samples[i];
+        samples[i] = samples[j];
+        samples[j] = temp;
+      }
+    }
+  }
+  if (size % 2 == 0) {
+    return (samples[size / 2 - 1] + samples[size / 2]) / 2.0;
+  } else {
+    return samples[size / 2];
+  }
+}
+
+float readPh(bool &isConnected) {
+  float samples[NUM_SAMPLES];
+  for (int i = 0; i < NUM_SAMPLES; i++) {
+    samples[i] = analogRead(PH_PIN);
+    delay(5);
+  }
+  float medianRaw = getMedian(samples, NUM_SAMPLES);
+  
+  if (medianRaw < 10) {
+    isConnected = false;
+    return 7.2; 
+  }
+  
+  isConnected = true;
+  float voltage = medianRaw * (3.3 / 4095.0);
+  return 3.5 * voltage;
+}
+
+float readTDS() {
+  float samples[NUM_SAMPLES];
+  for (int i = 0; i < NUM_SAMPLES; i++) {
+    samples[i] = analogRead(TDS_PIN);
+    delay(5);
+  }
+  float medianRaw = getMedian(samples, NUM_SAMPLES);
+  if (medianRaw < 10) {
+    return 0.0;
+  }
+  float voltage = medianRaw * (3.3 / 4095.0);
+  // Calibration: offset of ~0.6068V in air
+  float tds_voltage = voltage - 0.6068;
+  if (tds_voltage < 0) tds_voltage = 0;
+  return tds_voltage * 100.0;
+}
+
+float readTurbidity() {
+  float samples[NUM_SAMPLES];
+  for (int i = 0; i < NUM_SAMPLES; i++) {
+    samples[i] = analogRead(TURBIDITY_PIN);
+    delay(5);
+  }
+  float medianRaw = getMedian(samples, NUM_SAMPLES);
+  if (medianRaw < 10) {
+    return 0.0;
+  }
+  float voltage = medianRaw * (3.3 / 4095.0);
+  // Calibration: 2.95V is ~0 NTU (in air / clear water)
+  float turbidity = 100.0 - (voltage / 2.95) * 100.0;
+  if (turbidity < 0) turbidity = 0;
+  return turbidity;
+}
+
+float readTemperature(bool &isSensorConnected) {
+  sensors.requestTemperatures(); 
+  float tempC = sensors.getTempCByIndex(0);
+  
+  if (tempC != DEVICE_DISCONNECTED_C && tempC > -50.0 && tempC < 100.0) {
+    isSensorConnected = true;
+    return tempC;
+  } 
+  
+  isSensorConnected = false;
+  return 25.0; 
+}
 
 void setup() {
   Serial.begin(115200);
 
-  // Initialize Sensors
+  analogSetPinAttenuation(PH_PIN, ADC_11db);
+  analogSetPinAttenuation(TDS_PIN, ADC_11db);
+  analogSetPinAttenuation(TURBIDITY_PIN, ADC_11db);
+
   sensors.begin();
   
-  // Connect to Wi-Fi
   WiFi.begin(ssid, password);
   Serial.println("Connecting to WiFi...");
-  while(WiFi.status() != WL_CONNECTED) {
+  
+  int attempts = 0;
+  while(WiFi.status() != WL_CONNECTED && attempts < 20) {
     delay(500);
     Serial.print(".");
+    attempts++;
   }
   Serial.println("");
-  Serial.print("Connected to WiFi network with IP Address: ");
-  Serial.println(WiFi.localIP());
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.print("Connected to WiFi: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("Failed to connect to WiFi on startup.");
+  }
 }
 
 void loop() {
-  // Send an HTTP POST request every timerDelay milliseconds
-  if ((millis() - lastTime) > timerDelay) {
+  if(WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi disconnected. Reconnecting...");
+    WiFi.disconnect();
+    WiFi.reconnect();
+    delay(5000);
+    return; 
+  }
+
+  if ((millis() - lastTime) >= timerDelay) {
+    HTTPClient http;
     
-    // Check WiFi connection status
-    if(WiFi.status() == WL_CONNECTED){
-      HTTPClient http;
-      
-      // Read sensors
-      float phValue = readPh();
-      float tdsValue = readTDS();
-      float turbidityValue = readTurbidity();
-      float tempValue = readTemperature();
+    bool phConnected = false;
+    float phValue = readPh(phConnected);
+    float tdsValue = readTDS();
+    float turbidityValue = readTurbidity();
+    bool tempSensorConnected = false;
+    float tempValue = readTemperature(tempSensorConnected);
 
-      // Print for debugging
-      Serial.printf("pH: %.2f | TDS: %.2f ppm | Turbidity: %.2f NTU | Temp: %.2f C\n", phValue, tdsValue, turbidityValue, tempValue);
+    Serial.printf("pH: %.2f | TDS: %.2f ppm | Turbidity: %.2f NTU | Temp: %.2f C (Connected: %s, pH Connected: %s)\n", 
+      phValue, tdsValue, turbidityValue, tempValue, tempSensorConnected ? "Yes" : "No", phConnected ? "Yes" : "No");
 
-      // Your Domain name with URL path or IP address with path
-      http.begin(serverName);
-      
-      // Specify content-type header
-      http.addHeader("Content-Type", "application/json");
-      
-      // Prepare JSON payload
-      String httpRequestData = "{\"ph\":\"" + String(phValue) + "\",\"tds\":\"" + String(tdsValue) + "\",\"turbidity\":\"" + String(turbidityValue) + "\",\"temperature\":\"" + String(tempValue) + "\"}";           
-      
-      // Send HTTP POST request
-      int httpResponseCode = http.POST(httpRequestData);
-     
-      if (httpResponseCode > 0) {
-        Serial.print("HTTP Response code: ");
-        Serial.println(httpResponseCode);
-      }
-      else {
-        Serial.print("Error code: ");
-        Serial.println(httpResponseCode);
-      }
-      // Free resources
-      http.end();
+    http.begin(serverName);
+    http.addHeader("Content-Type", "application/json");
+    
+    String tempSource = tempSensorConnected ? "sensor" : "estimated";
+    String phStatus = phConnected ? "valid" : "estimated";
+    
+    String httpRequestData = "{";
+    httpRequestData += "\"ph\":" + String(phValue) + ",";
+    httpRequestData += "\"tds\":" + String(tdsValue) + ",";
+    httpRequestData += "\"turbidity\":" + String(turbidityValue) + ",";
+    httpRequestData += "\"temperature\":" + String(tempValue) + ",";
+    httpRequestData += "\"temp_source\":\"" + tempSource + "\",";
+    httpRequestData += "\"ph_status\":\"" + phStatus + "\"";
+    httpRequestData += "}";           
+    
+    int httpResponseCode = http.POST(httpRequestData);
+    if (httpResponseCode > 0) {
+      Serial.print("HTTP Response code: ");
+      Serial.println(httpResponseCode);
+    } else {
+      Serial.print("Error code: ");
+      Serial.println(httpResponseCode);
     }
-    else {
-      Serial.println("WiFi Disconnected");
-    }
+    http.end();
+    
     lastTime = millis();
   }
-}
-
-// --- Sensor Reading Functions ---
-
-float readPh() {
-  int analogValue = analogRead(PH_PIN);
-  // Calibration required: convert analog value (0-4095) to pH (0-14)
-  // This is a dummy conversion for testing
-  float voltage = analogValue * (3.3 / 4095.0);
-  float ph = 3.5 * voltage; // Simplified example formula
-  return ph;
-}
-
-float readTDS() {
-  int analogValue = analogRead(TDS_PIN);
-  // Calibration required: convert analog value to TDS in ppm
-  float voltage = analogValue * (3.3 / 4095.0);
-  float tds = voltage * 100; // Simplified example formula
-  return tds;
-}
-
-float readTurbidity() {
-  int analogValue = analogRead(TURBIDITY_PIN);
-  // Calibration required: convert analog value to NTU
-  float voltage = analogValue * (3.3 / 4095.0);
-  float turbidity = 100.00 - (voltage / 3.3) * 100.00; // Simplified
-  return turbidity;
-}
-
-float readTemperature() {
-  sensors.requestTemperatures(); 
-  float tempC = sensors.getTempCByIndex(0);
-  // Check if reading was successful
-  if(tempC != DEVICE_DISCONNECTED_C) 
-  {
-    return tempC;
-  } 
-  return -127.0; // Error value
 }
