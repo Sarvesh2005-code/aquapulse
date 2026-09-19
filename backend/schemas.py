@@ -4,8 +4,8 @@ import datetime
 
 class SensorDataCreate(BaseModel):
     ph: float
-    tds: float
-    turbidity: float
+    tds: Optional[float] = None
+    turbidity: Optional[float] = None
     temperature: float
     temp_source: Optional[str] = "sensor"
     ph_status: Optional[str] = "valid"

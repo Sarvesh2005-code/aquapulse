@@ -142,24 +142,25 @@ def predict_health(db: Session = Depends(get_db)):
     if latest.ph < 6.5 or latest.ph > 8.5:
         score -= 20
         quality = "Moderate"
-    if latest.tds > 500:
+    if latest.tds is not None and latest.tds > 500:
         score -= 20
         quality = "Poor"
-    if latest.turbidity > 5.0:
+    if latest.turbidity is not None and latest.turbidity > 5.0:
         score -= 30
         risk = "High Risk"
         quality = "Unsafe"
         
     if score < 0: score = 0
     
-    # --- ML Prediction ---
+    # Check ML Prediction
     skin_risk_result = "Unknown"
     probability = 0.0
-    
-    if model is not None:
+    if model:
         try:
             # Need to provide valid feature names used during training
-            input_df = pd.DataFrame([[latest.ph, latest.tds, latest.turbidity, latest.temperature if latest.temperature is not None else 25.0]], 
+            safe_tds = latest.tds if latest.tds is not None else 120.0
+            safe_turb = latest.turbidity if latest.turbidity is not None else 1.5
+            input_df = pd.DataFrame([[latest.ph, safe_tds, safe_turb, latest.temperature if latest.temperature is not None else 25.0]], 
                                     columns=['pH', 'TDS', 'Turbidity', 'Temperature'])
             skin_risk_result = str(model.predict(input_df)[0])
             if hasattr(model, "predict_proba"):
@@ -171,7 +172,9 @@ def predict_health(db: Session = Depends(get_db)):
             log_event(db, "ML_ERROR", f"Prediction error: {e}", "ERROR")
             
     # Potability Rule
-    is_potable = (6.5 <= latest.ph <= 8.5) and (latest.tds <= 500) and (latest.turbidity <= 5.0)
+    safe_tds = latest.tds if latest.tds is not None else 120.0
+    safe_turb = latest.turbidity if latest.turbidity is not None else 1.5
+    is_potable = (6.5 <= latest.ph <= 8.5) and (safe_tds <= 500) and (safe_turb <= 5.0)
     potability_result = "Safe for Drinking" if is_potable else "Not Safe for Drinking"
     
     # Save Prediction to DB
