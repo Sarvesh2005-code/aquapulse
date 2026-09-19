@@ -29,6 +29,8 @@ export function Trends() {
       }
     };
     fetchData();
+    const interval = setInterval(fetchData, 5000);
+    return () => clearInterval(interval);
   }, [viewDays]);
 
   const labels = history.map(d => new Date(d.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }));
