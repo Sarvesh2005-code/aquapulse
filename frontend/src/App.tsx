@@ -1,5 +1,6 @@
-﻿import React from 'react';
+import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { AppProvider } from './context/AppContext';
 import { Layout } from './components/Layout';
 import { Overview } from './pages/Overview';
 import { Trends } from './pages/Trends';
@@ -10,18 +11,20 @@ import Readings from './pages/Readings';
 
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Layout />}>
-          <Route index element={<Overview />} />
-          <Route path="readings" element={<Readings />} />
-          <Route path="trends" element={<Trends />} />
-          <Route path="health" element={<HealthInsights />} />
-          <Route path="history" element={<HistoryLogs />} />
-          <Route path="settings" element={<Settings />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+    <AppProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Layout />}>
+            <Route index element={<Overview />} />
+            <Route path="readings" element={<Readings />} />
+            <Route path="trends" element={<Trends />} />
+            <Route path="health" element={<HealthInsights />} />
+            <Route path="history" element={<HistoryLogs />} />
+            <Route path="settings" element={<Settings />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </AppProvider>
   );
 }
 

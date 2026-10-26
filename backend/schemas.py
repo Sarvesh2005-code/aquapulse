@@ -14,9 +14,11 @@ class SensorDataResponse(BaseModel):
     id: int
     timestamp: datetime.datetime
     ph: float
-    tds: float
-    turbidity: float
-    temperature: Optional[float]
+    tds: Optional[float] = None
+    turbidity: Optional[float] = None
+    temperature: Optional[float] = None
+    is_connected: Optional[bool] = None
+    seconds_since_last_ping: Optional[float] = None
 
     class Config:
         orm_mode = True
@@ -38,12 +40,12 @@ class HealthPredictionResponse(BaseModel):
     id: int
     timestamp: datetime.datetime
     ph: float
-    tds: float
-    turbidity: float
-    temperature: Optional[float]
+    tds: Optional[float] = None
+    turbidity: Optional[float] = None
+    temperature: Optional[float] = None
     predicted_condition: str
-    probability: Optional[float]
-    model_version: Optional[str]
+    probability: Optional[float] = None
+    model_version: Optional[str] = None
 
     class Config:
         orm_mode = True

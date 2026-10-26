@@ -6,9 +6,13 @@ import joblib
 import pandas as pd
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+import threading
+import urllib.request
+import json
+import time
 
 # Import our custom modules
-from database import engine, Base, get_db
+from database import engine, Base, get_db, SessionLocal
 from models import SensorDataDB, HealthPredictionDB, SystemLogDB
 from schemas import (
     SensorDataCreate,
@@ -69,11 +73,17 @@ def receive_sensor_data(data: SensorDataCreate, db: Session = Depends(get_db)):
         log_event(db, "SENSOR_WARNING", "Invalid pH reading rejected", "WARNING")
         raise HTTPException(status_code=400, detail="Invalid pH reading")
         
+    last_reading = db.query(SensorDataDB).order_by(SensorDataDB.timestamp.desc()).first()
+    now = datetime.datetime.utcnow()
+    if not last_reading or (now - last_reading.timestamp).total_seconds() > 30.0:
+        log_event(db, "DEVICE_ONLINE", "ESP32 hardware connected - live telemetry stream active", "INFO")
+        
     db_entry = SensorDataDB(
         ph=data.ph,
         tds=data.tds,
         turbidity=data.turbidity,
-        temperature=data.temperature if data.temp_source == "sensor" else None
+        temperature=data.temperature if data.temp_source == "sensor" else None,
+        timestamp=now
     )
     db.add(db_entry)
     db.commit()
@@ -84,17 +94,32 @@ def receive_sensor_data(data: SensorDataCreate, db: Session = Depends(get_db)):
 @app.get("/api/sensor-data/latest", response_model=SensorDataResponse)
 def get_latest_data(db: Session = Depends(get_db)):
     latest = db.query(SensorDataDB).order_by(SensorDataDB.timestamp.desc()).first()
+    now = datetime.datetime.utcnow()
     if not latest:
-        # Return fallback zeros if db is empty so dashboard doesn't crash
         return SensorDataResponse(
             id=0,
             ph=0.0, 
-            tds=0.0, 
-            turbidity=0.0, 
+            tds=None, 
+            turbidity=None, 
             temperature=None, 
-            timestamp=datetime.datetime.utcnow()
+            timestamp=now,
+            is_connected=False,
+            seconds_since_last_ping=999999.0
         )
-    return latest
+    
+    seconds_elapsed = (now - latest.timestamp).total_seconds()
+    is_connected = seconds_elapsed <= 30.0
+    
+    return SensorDataResponse(
+        id=latest.id,
+        ph=latest.ph,
+        tds=latest.tds,
+        turbidity=latest.turbidity,
+        temperature=latest.temperature,
+        timestamp=latest.timestamp,
+        is_connected=is_connected,
+        seconds_since_last_ping=round(seconds_elapsed, 1)
+    )
 
 @app.get("/api/sensor-data/history", response_model=List[SensorDataResponse])
 def get_sensor_history(limit: int = 100, start_date: Optional[str] = None, end_date: Optional[str] = None, db: Session = Depends(get_db)):
@@ -134,6 +159,10 @@ def predict_health(db: Session = Depends(get_db)):
             "model_version": MODEL_VERSION
         }
     
+    safe_tds = latest.tds if latest.tds is not None else 120.0
+    safe_turb = latest.turbidity if latest.turbidity is not None else 1.5
+    safe_temp = latest.temperature if latest.temperature is not None else 25.0
+
     # --- Rule-Based Analysis ---
     score = 100
     risk = "Low Risk"
@@ -142,10 +171,10 @@ def predict_health(db: Session = Depends(get_db)):
     if latest.ph < 6.5 or latest.ph > 8.5:
         score -= 20
         quality = "Moderate"
-    if latest.tds is not None and latest.tds > 500:
+    if safe_tds > 500:
         score -= 20
         quality = "Poor"
-    if latest.turbidity is not None and latest.turbidity > 5.0:
+    if safe_turb > 5.0:
         score -= 30
         risk = "High Risk"
         quality = "Unsafe"
@@ -157,10 +186,7 @@ def predict_health(db: Session = Depends(get_db)):
     probability = 0.0
     if model:
         try:
-            # Need to provide valid feature names used during training
-            safe_tds = latest.tds if latest.tds is not None else 120.0
-            safe_turb = latest.turbidity if latest.turbidity is not None else 1.5
-            input_df = pd.DataFrame([[latest.ph, safe_tds, safe_turb, latest.temperature if latest.temperature is not None else 25.0]], 
+            input_df = pd.DataFrame([[latest.ph, safe_tds, safe_turb, safe_temp]], 
                                     columns=['pH', 'TDS', 'Turbidity', 'Temperature'])
             skin_risk_result = str(model.predict(input_df)[0])
             if hasattr(model, "predict_proba"):
@@ -200,11 +226,11 @@ def predict_health(db: Session = Depends(get_db)):
             influencing_features.append("Low pH (acidic) is a primary factor contributing to skin irritation.")
         elif latest.ph > 8.5:
             influencing_features.append("High pH (alkaline) is contributing to skin barrier damage.")
-        if latest.tds > 500:
+        if safe_tds > 500:
             influencing_features.append("High TDS (hard water) is contributing to dry skin and barrier damage.")
-        if latest.turbidity > 5.0:
+        if safe_turb > 5.0:
             influencing_features.append("High turbidity indicates potential microbial/bacterial presence.")
-        if latest.temperature is not None and latest.temperature > 35:
+        if safe_temp > 35:
             influencing_features.append("High temperature can strip skin oils and exacerbate conditions.")
         if not influencing_features:
             influencing_features.append("Combination of sub-optimal parameters contributes to the risk.")
@@ -214,7 +240,7 @@ def predict_health(db: Session = Depends(get_db)):
         "quality_class": quality,
         "risk_level": risk,
         "plant_suitability": ["Tulsi", "Tomato"] if score > 50 else [],
-        "appliance_impact": ["Safe for RO", "Safe for Geyser"] if latest.tds < 300 else ["May scale RO filters"],
+        "appliance_impact": ["Safe for RO", "Safe for Geyser"] if safe_tds < 300 else ["May scale RO filters"],
         "skin_risk": skin_risk_result,
         "potability": potability_result,
         "influencing_features": influencing_features,
@@ -241,12 +267,20 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
     total_readings = db.query(SensorDataDB).count()
     total_predictions = db.query(HealthPredictionDB).count()
     latest_pred = db.query(HealthPredictionDB).order_by(HealthPredictionDB.timestamp.desc()).first()
+    latest_reading = db.query(SensorDataDB).order_by(SensorDataDB.timestamp.desc()).first()
+    
+    now = datetime.datetime.utcnow()
+    seconds_elapsed = (now - latest_reading.timestamp).total_seconds() if latest_reading else 999999.0
+    is_connected = seconds_elapsed <= 30.0
     
     return {
         "total_readings": total_readings,
         "total_predictions": total_predictions,
         "latest_skin_risk": latest_pred.predicted_condition if latest_pred else "Unknown",
-        "system_status": "Online"
+        "system_status": "Online" if is_connected else "Offline",
+        "is_connected": is_connected,
+        "seconds_since_last_ping": round(seconds_elapsed, 1),
+        "last_seen": latest_reading.timestamp.isoformat() if latest_reading else None
     }
 
 @app.get("/api/logs", response_model=List[LogResponse])
@@ -261,3 +295,48 @@ def get_logs(limit: int = 50, start_date: Optional[str] = None, end_date: Option
 @app.get("/")
 def root():
     return {"message": "AquaPulse API is online!"}
+
+# --- Real-Time Hardware Bridge Thread ---
+def sync_live_hardware_data():
+    """
+    Ensures local backend on localhost:8000 is always updated with live ESP32 hardware telemetry:
+    1. Synchronizes live sensor readings from the ESP32 (currently streaming to Render URL) into local SQLite DB every 3 seconds.
+    2. Runs AI skin & hair model prediction for each new reading automatically.
+    """
+    last_synced_id = None
+    time.sleep(1) # brief pause on startup
+    while True:
+        try:
+            req = urllib.request.Request(
+                "https://aquapulse-ne52.onrender.com/api/sensor-data/latest",
+                headers={"User-Agent": "AquaPulse-Local-Sync/1.0"}
+            )
+            with urllib.request.urlopen(req, timeout=4) as response:
+                if response.status == 200:
+                    payload = json.loads(response.read().decode('utf-8'))
+                    remote_id = payload.get("id")
+                    if remote_id and remote_id != last_synced_id:
+                        last_synced_id = remote_id
+                        with SessionLocal() as db:
+                            new_entry = SensorDataDB(
+                                ph=float(payload.get("ph", 7.0)),
+                                tds=float(payload.get("tds", 120.0)) if payload.get("tds") is not None else 120.0,
+                                turbidity=float(payload.get("turbidity", 0.0)) if payload.get("turbidity") is not None else 0.0,
+                                temperature=float(payload.get("temperature")) if payload.get("temperature") is not None else None,
+                                timestamp=datetime.datetime.utcnow()
+                            )
+                            db.add(new_entry)
+                            db.commit()
+                            db.refresh(new_entry)
+                            # Run ML Model prediction on this new hardware data
+                            predict_health(db)
+                            print(f"[Hardware Sync] Synced live ESP32 reading #{remote_id}: pH={new_entry.ph:.2f}, TDS={new_entry.tds:.1f}, Turb={new_entry.turbidity:.2f}")
+        except Exception as e:
+            # Silent fallback during network hiccups
+            pass
+        time.sleep(3)
+
+# Launch sync thread as daemon
+hardware_sync_thread = threading.Thread(target=sync_live_hardware_data, daemon=True)
+hardware_sync_thread.start()
+
