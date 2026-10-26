@@ -527,6 +527,12 @@ export function Overview() {
             }`}
           >
             <p className="font-bold text-sm mb-1">{isOnline ? analysis.skin_risk : 'Hardware Disconnected'}</p>
+            {isOnline && analysis.hair_risk && (
+              <p className="font-semibold text-xs text-teal-700 dark:text-teal-300 mb-1 flex items-center gap-1">
+                <span>Hair Cuticle:</span>
+                <span className="font-bold">{analysis.hair_risk}</span>
+              </p>
+            )}
             <p>
               {isOnline
                 ? analysis.influencing_features && analysis.influencing_features.length > 0

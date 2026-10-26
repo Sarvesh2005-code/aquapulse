@@ -12,6 +12,7 @@ import {
   RotateCcw,
   Radio,
   ExternalLink,
+  Smartphone,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
@@ -95,6 +96,38 @@ export function Settings() {
           <span className="text-xs font-semibold px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
             Node Firmware: AquaPulse v2.0
           </span>
+        </div>
+      </div>
+
+      {/* Mobile Phone Remote Card */}
+      <div className="glass-card rounded-3xl p-6 sm:p-7 border border-teal-500/30 bg-gradient-to-r from-teal-500/10 via-cyan-500/5 to-transparent flex flex-col sm:flex-row sm:items-center justify-between gap-5 shadow-sm">
+        <div className="flex items-start sm:items-center space-x-4">
+          <div className="p-3.5 rounded-2xl bg-teal-500/20 text-teal-600 dark:text-teal-400 border border-teal-500/30 shrink-0">
+            <Smartphone className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <span>Mobile Phone Virtual Controller</span>
+              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-700 dark:text-teal-300">
+                Viva Ready
+              </span>
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-1 max-w-2xl leading-relaxed">
+              Open the dedicated controller on your smartphone to simulate live water quality conditions with 1-tap presets and sliders. Telemetry streams directly to the backend API without needing a physical ESP32.
+            </p>
+          </div>
+        </div>
+
+        <div className="shrink-0 flex items-center space-x-2">
+          <a
+            href="/remote"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold shadow-md shadow-teal-600/20 flex items-center gap-2 transition-all active:scale-95"
+          >
+            <span>Open Phone Remote</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
         </div>
       </div>
 

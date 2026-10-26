@@ -31,6 +31,7 @@ class HealthAnalysisResponse(BaseModel):
     plant_suitability: List[str]
     appliance_impact: List[str]
     skin_risk: str
+    hair_risk: Optional[str] = None
     potability: str
     influencing_features: List[str]
     probability: Optional[float] = None

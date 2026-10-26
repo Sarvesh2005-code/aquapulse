@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>AquaPulse Remote — Mobile Virtual ESP32</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --teal: #14b8a6;
+      --teal-hover: #0d9488;
+      --emerald: #10b981;
+      --rose: #f43f5e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 16px; min-height: 100vh; display: flex; justify-content: center; }
+    .container { width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: 14px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 16px; }
+    .header { display: flex; align-items: center; justify-content: space-between; }
+    .title { font-size: 1.15rem; font-weight: 800; }
+    .pill { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; }
+    .pill-active { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #059669; }
+    .pill-standby { background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid var(--border); }
+    .preset-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .preset-btn { background: #0f172a; border: 1px solid var(--border); border-radius: 14px; padding: 10px; text-align: left; color: var(--text); cursor: pointer; transition: 0.2s; }
+    .preset-btn:active, .preset-btn.active { border-color: var(--teal); background: rgba(20, 184, 166, 0.15); }
+    .slider-group { display: flex; flex-direction: column; gap: 12px; }
+    .slider-item { display: flex; flex-direction: column; gap: 4px; }
+    .slider-header { display: flex; justify-content: space-between; font-size: 0.8rem; font-weight: 600; }
+    .slider-val { font-family: monospace; color: var(--teal); font-weight: 800; background: #0f172a; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--border); }
+    input[type=range] { width: 100%; accent-color: var(--teal); cursor: pointer; }
+    .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .btn { padding: 12px; border-radius: 14px; font-size: 0.85rem; font-weight: 700; border: none; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px; }
+    .btn-send { background: var(--teal); color: #042f2e; }
+    .btn-send:active { background: var(--teal-hover); }
+    .btn-stream { background: var(--emerald); color: #022c22; }
+    .btn-stream.active { background: var(--rose); color: #fff; }
+    .log-box { padding: 10px; border-radius: 12px; font-size: 0.75rem; background: #0f172a; border: 1px solid var(--border); font-family: monospace; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card header">
+      <div>
+        <div class="title">AquaPulse Remote 📱</div>
+        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">Phone Telemetry Controller</div>
+      </div>
+      <div id="statusPill" class="pill pill-standby">Standby</div>
+    </div>
+
+    <!-- API Config -->
+    <div class="card" style="padding: 12px;">
+      <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px;">TARGET BACKEND API:</div>
+      <input id="apiInput" type="text" style="width: 100%; background: #0f172a; border: 1px solid var(--border); color: #5eead4; padding: 6px 10px; border-radius: 8px; font-size: 0.75rem; font-family: monospace;" value="https://aquapulse-ne52.onrender.com">
+    </div>
+
+    <!-- Presets -->
+    <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted);">1-Tap Presets</div>
+    <div class="preset-grid">
+      <button class="preset-btn active" onclick="loadPreset(7.3, 115, 0.8, 24.0, this)">
+        <div style="font-size: 1.1rem;">💧 RO Pure</div>
+        <div style="font-size: 0.7rem; color: var(--text-muted);">Safe / Drinking</div>
+      </button>
+      <button class="preset-btn" onclick="loadPreset(8.9, 680, 2.1, 25.0, this)">
+        <div style="font-size: 1.1rem;">🏔️ Hard Water</div>
+        <div style="font-size: 0.7rem; color: var(--text-muted);">Dry Skin Risk</div>
+      </button>
+      <button class="preset-btn" onclick="loadPreset(5.2, 320, 4.8, 26.2, this)">
+        <div style="font-size: 1.1rem;">🌧️ Acidic Rain</div>
+        <div style="font-size: 0.7rem; color: var(--text-muted);">Scalp Irritation</div>
+      </button>
+      <button class="preset-btn" onclick="loadPreset(6.3, 590, 14.5, 27.5, this)">
+        <div style="font-size: 1.1rem;">🌊 Turbid Pond</div>
+        <div style="font-size: 0.7rem; color: var(--text-muted);">Skin Irritation</div>
+      </button>
+    </div>
+
+    <!-- Tuning Sliders -->
+    <div class="card slider-group">
+      <div class="slider-item">
+        <div class="slider-header">
+          <span>pH Level:</span>
+          <span id="phVal" class="slider-val">7.30</span>
+        </div>
+        <input id="phInput" type="range" min="0" max="14" step="0.05" value="7.3" oninput="updateVals()">
+      </div>
+
+      <div class="slider-item">
+        <div class="slider-header">
+          <span>TDS Hardness:</span>
+          <span id="tdsVal" class="slider-val">115 ppm</span>
+        </div>
+        <input id="tdsInput" type="range" min="0" max="1000" step="5" value="115" oninput="updateVals()">
+      </div>
+
+      <div class="slider-item">
+        <div class="slider-header">
+          <span>Turbidity (Clarity):</span>
+          <span id="turbVal" class="slider-val">0.80 NTU</span>
+        </div>
+        <input id="turbInput" type="range" min="0" max="25" step="0.1" value="0.8" oninput="updateVals()">
+      </div>
+
+      <div class="slider-item">
+        <div class="slider-header">
+          <span>Temperature:</span>
+          <span id="tempVal" class="slider-val">24.0°C</span>
+        </div>
+        <input id="tempInput" type="range" min="10" max="45" step="0.5" value="24.0" oninput="updateVals()">
+      </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="btn-grid">
+      <button class="btn btn-send" onclick="sendTelemetry()">Send Once 📤</button>
+      <button id="streamBtn" class="btn btn-stream" onclick="toggleStream()">Auto-Stream ▶</button>
+    </div>
+
+    <!-- Log feedback -->
+    <div id="logBox" class="log-box">Status: Ready to transmit telemetry.</div>
+  </div>
+
+  <script>
+    let isStreaming = false;
+    let streamTimer = null;
+    let packetCount = 0;
+
+    function updateVals() {
+      document.getElementById('phVal').innerText = parseFloat(document.getElementById('phInput').value).toFixed(2);
+      document.getElementById('tdsVal').innerText = Math.round(document.getElementById('tdsInput').value) + ' ppm';
+      document.getElementById('turbVal').innerText = parseFloat(document.getElementById('turbInput').value).toFixed(2) + ' NTU';
+      document.getElementById('tempVal').innerText = parseFloat(document.getElementById('tempInput').value).toFixed(1) + '°C';
+    }
+
+    function loadPreset(ph, tds, turb, temp, btn) {
+      document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+      document.getElementById('phInput').value = ph;
+      document.getElementById('tdsInput').value = tds;
+      document.getElementById('turbInput').value = turb;
+      document.getElementById('tempInput').value = temp;
+      updateVals();
+    }
+
+    async function sendTelemetry() {
+      const api = document.getElementById('apiInput').value.replace(/\/$/, '');
+      const ph = parseFloat(document.getElementById('phInput').value);
+      const tds = parseFloat(document.getElementById('tdsInput').value);
+      const turbidity = parseFloat(document.getElementById('turbInput').value);
+      const temperature = parseFloat(document.getElementById('tempInput').value);
+
+      const payload = {
+        ph: ph,
+        tds: tds,
+        turbidity: turbidity,
+        temperature: temperature,
+        ph_status: 'valid',
+        temp_source: 'sensor'
+      };
+
+      const start = performance.now();
+      try {
+        const res = await fetch(`${api}/api/sensor-data`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const ms = Math.round(performance.now() - start);
+        if (res.ok) {
+          packetCount++;
+          document.getElementById('logBox').innerText = `✓ Packet #${packetCount} sent: pH ${ph.toFixed(2)}, TDS ${tds} (${ms}ms)`;
+          document.getElementById('logBox').style.borderColor = '#059669';
+        } else {
+          document.getElementById('logBox').innerText = `✗ Server returned HTTP ${res.status}`;
+          document.getElementById('logBox').style.borderColor = '#e11d48';
+        }
+      } catch (e) {
+        document.getElementById('logBox').innerText = `✗ Network error: ${e.message}`;
+        document.getElementById('logBox').style.borderColor = '#e11d48';
+      }
+    }
+
+    function toggleStream() {
+      isStreaming = !isStreaming;
+      const btn = document.getElementById('streamBtn');
+      const pill = document.getElementById('statusPill');
+
+      if (isStreaming) {
+        btn.innerText = 'Stop Stream ⏹';
+        btn.classList.add('active');
+        pill.innerText = 'Streaming';
+        pill.className = 'pill pill-active';
+        sendTelemetry();
+        streamTimer = setInterval(() => {
+          // Add micro jitter
+          const curPh = parseFloat(document.getElementById('phInput').value);
+          const jitter = +(Math.random() * 0.04 - 0.02).toFixed(2);
+          document.getElementById('phInput').value = Math.max(0, Math.min(14, curPh + jitter));
+          updateVals();
+          sendTelemetry();
+        }, 4000);
+      } else {
+        btn.innerText = 'Auto-Stream ▶';
+        btn.classList.remove('active');
+        pill.innerText = 'Standby';
+        pill.className = 'pill pill-standby';
+        if (streamTimer) clearInterval(streamTimer);
+      }
+    }
+  </script>
+</body>
+</html>

@@ -235,13 +235,35 @@ def predict_health(db: Session = Depends(get_db)):
         if not influencing_features:
             influencing_features.append("Combination of sub-optimal parameters contributes to the risk.")
             
+    # Hair Risk Evaluation
+    hair_risk_result = "Healthy Hair & Scalp"
+    if safe_tds > 500:
+        hair_risk_result = "Hair Dryness & Cuticle Scaling (Hard Water Residue)"
+    elif latest.ph < 6.5:
+        hair_risk_result = "Scalp Irritation & Follicle Sensitivity (Acidic Stinging)"
+    elif latest.ph > 8.5:
+        hair_risk_result = "Cuticle Lifting & Brittleness (Alkaline Stripping)"
+    elif safe_turb > 5.0:
+        hair_risk_result = "Microbial Scalp Build-up Risk"
+    else:
+        hair_risk_result = "Optimal Scalp & Hair Cuticle Vitality"
+
+    # Botanical / Plant Suitability
+    if score >= 80:
+        plants = ["Tulsi (Holy Basil)", "Tomato", "Aloe Vera", "Mint", "Money Plant"]
+    elif score >= 50:
+        plants = ["Snake Plant", "Bougainvillea", "Hardy Shrubs", "Ficus"]
+    else:
+        plants = ["Filtered water advised for sensitive flora (mineral/turbidity stress)"]
+
     return {
         "health_score": score,
         "quality_class": quality,
         "risk_level": risk,
-        "plant_suitability": ["Tulsi", "Tomato"] if score > 50 else [],
+        "plant_suitability": plants,
         "appliance_impact": ["Safe for RO", "Safe for Geyser"] if safe_tds < 300 else ["May scale RO filters"],
         "skin_risk": skin_risk_result,
+        "hair_risk": hair_risk_result,
         "potability": potability_result,
         "influencing_features": influencing_features,
         "probability": probability,

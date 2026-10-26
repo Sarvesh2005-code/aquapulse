@@ -8,12 +8,14 @@ import { HealthInsights } from './pages/HealthInsights';
 import { HistoryLogs } from './pages/HistoryLogs';
 import { Settings } from './pages/Settings';
 import Readings from './pages/Readings';
+import RemoteController from './pages/RemoteController';
 
 function App() {
   return (
     <AppProvider>
       <BrowserRouter>
         <Routes>
+          {/* Main Desktop Dashboard Layout */}
           <Route path="/" element={<Layout />}>
             <Route index element={<Overview />} />
             <Route path="readings" element={<Readings />} />
@@ -22,6 +24,10 @@ function App() {
             <Route path="history" element={<HistoryLogs />} />
             <Route path="settings" element={<Settings />} />
           </Route>
+
+          {/* Standalone Mobile Virtual Hardware Remote Controller */}
+          <Route path="/remote" element={<RemoteController />} />
+          <Route path="/controller" element={<RemoteController />} />
         </Routes>
       </BrowserRouter>
     </AppProvider>

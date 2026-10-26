@@ -10,6 +10,7 @@ import {
   X,
   Cpu,
   ShieldCheck,
+  Smartphone,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -59,6 +60,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: <Settings className="w-5 h-5" />,
       label: 'System Settings',
       badge: null,
+    },
+    {
+      to: '/remote',
+      icon: <Smartphone className="w-5 h-5 text-teal-500" />,
+      label: 'Phone Remote',
+      badge: 'Demo',
     },
   ];
 

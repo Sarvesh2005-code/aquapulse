@@ -23,6 +23,7 @@ export interface AnalysisData {
   plant_suitability: string[];
   appliance_impact: string[];
   skin_risk: string;
+  hair_risk?: string;
   potability: string;
   influencing_features: string[];
   probability: number;
